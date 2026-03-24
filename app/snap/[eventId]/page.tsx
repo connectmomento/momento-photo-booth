@@ -3,8 +3,10 @@
 import { useState, useRef, useEffect } from "react"
 import { RefreshCw, CheckCircle, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { useParams } from "next/navigation" // Add this import
 
-export default function SnapPage({ params }: { params: { eventId: string } }) {
+export default function SnapPage() {
+  const params = useParams() // Use the Next.js hook instead of props
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment")
   const [isCapturing, setIsCapturing] = useState(false)
   const [showDownload, setShowDownload] = useState(false)
@@ -16,58 +18,50 @@ export default function SnapPage({ params }: { params: { eventId: string } }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  // 1. Better Guest ID Logic
-  const getGuestId = () => {
-    if (typeof window === "undefined") return "server"
-    let id = localStorage.getItem(`guest_${params.eventId}`)
-    if (!id) {
-      id = `g_${Math.random().toString(36).substring(7)}`
-      localStorage.setItem(`guest_${params.eventId}`, id)
-    }
-    return id
-  }
-
-  // 2. Load Event with Debugging
- useEffect(() => {
+  useEffect(() => {
     async function loadEvent() {
-      // 1. Clean the ID (Remove any accidental spaces or "unidentified" strings)
-      const cleanId = params.eventId?.trim();
+      // SMART ID DETECTION: Try params first, then the URL string
+      let eventId = params?.eventId as string;
       
-      if (!cleanId || cleanId === "unidentified" || cleanId.length < 20) {
-        setError(`Link Error: The ID received (${cleanId}) is not a valid event key.`);
-        return;
+      if (!eventId || eventId === "unidentified") {
+        const pathParts = window.location.pathname.split('/');
+        eventId = pathParts[pathParts.length - 1];
       }
 
-      console.log("Fetching Event:", cleanId);
+      if (!eventId || eventId === "unidentified" || eventId.length < 20) {
+        setError(`Link Error: ID (${eventId}) is invalid. Please rescan the QR.`);
+        return;
+      }
 
       const { data: event, error: eventErr } = await supabase
         .from("events")
         .select("*")
-        .eq("id", cleanId)
+        .eq("id", eventId)
         .maybeSingle();
 
       if (eventErr) {
-        setError(`Database Connection Error: ${eventErr.message}`);
+        setError(`Connection Error: ${eventErr.message}`);
         return;
       }
 
       if (!event) {
-        setError(`Event Not Found: The ID ${cleanId.substring(0,8)} does not exist in the database.`);
+        setError(`Event Not Found: ${eventId.substring(0,8)}`);
         return;
       }
 
       setEventData(event);
-
-      // 2. Fetch photo count
+      
       const { count } = await supabase
         .from("photos")
         .select("id", { count: "exact" })
-        .eq("event_id", cleanId);
+        .eq("event_id", eventId);
 
       setRemainingPhotos((event.photo_limit || 25) - (count || 0));
     }
     loadEvent();
-  }, [params.eventId]);
+  }, [params]);
+
+  // ... rest of your camera/capture code stays the same
 
   const stopCamera = () => {
     if (streamRef.current) {
