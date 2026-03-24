@@ -79,7 +79,7 @@ export default function AdminDashboard() {
       return `${window.location.origin}/snap/${eventId}`
     }
     return `/snap/${eventId}`
-
+    }
   const handleCreateEvent = async () => {
     if (!newEvent.name.trim()) return
     
@@ -177,11 +177,12 @@ export default function AdminDashboard() {
           {selectedEvent && (
             <div className="flex flex-col items-center py-6">
               <div className="bg-white p-4 rounded-2xl mb-6 shadow-2xl">
-                <QRCodeSVG 
-                  value={getEventUrl(selectedEvent.id)} 
-                  size={200} 
-                  level="H" 
-                  imageSettings={{ src: "/camera-icon.png", height: 40, width: 40, excavate: true }} 
+                <<QRCodeSVG 
+  value={getEventUrl(selectedEvent.id)} 
+  size={220} 
+  level="M" // Changed from H to M for better compatibility
+  includeMargin={false}
+  // Removed imageSettings to make the QR code solid and easier to scan
                 />
               </div>
               <div className="flex gap-2 bg-black/50 p-3 rounded-xl border border-stone-800 w-full">
