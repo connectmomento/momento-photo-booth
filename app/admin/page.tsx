@@ -25,32 +25,7 @@ interface Event {
   photo_count?: number
   guest_count?: number
 }
-{/* Create Event Modal - WITH PHOTO LIMIT */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-white rounded-3xl">
-          <DialogHeader><DialogTitle className="text-amber-100 uppercase text-sm tracking-widest">Launch New Event</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-6">
-             <div className="space-y-1">
-                <p className="text-[10px] text-stone-500 uppercase ml-1">Title</p>
-                <Input placeholder="e.g. PAVAN WEDDING" value={newEvent.name} onChange={(e) => setNewEvent({...newEvent, name: e.target.value.toUpperCase()})} className="bg-stone-800 border-stone-700 rounded-xl focus:ring-amber-600 uppercase" />
-             </div>
-             
-             <div className="flex gap-4">
-               <div className="flex-1 space-y-1">
-                  <p className="text-[10px] text-stone-500 uppercase ml-1">Event Date</p>
-                  <Input type="date" value={newEvent.date} onChange={(e) => setNewEvent({...newEvent, date: e.target.value})} className="bg-stone-800 border-stone-700 rounded-xl" />
-               </div>
-               <div className="w-24 space-y-1">
-                  <p className="text-[10px] text-stone-500 uppercase ml-1">Limit</p>
-                  <Input type="number" value={newEvent.photo_limit} onChange={(e) => setNewEvent({...newEvent, photo_limit: parseInt(e.target.value) || 25})} className="bg-stone-800 border-stone-700 rounded-xl" />
-               </div>
-             </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={handleCreateEvent} className="bg-amber-600 text-stone-900 font-bold w-full rounded-xl py-6">ACTIVATE EVENT</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
 export default function AdminDashboard() {
   const [events, setEvents] = useState<Event[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -145,59 +120,4 @@ export default function AdminDashboard() {
                 <CardTitle className="text-amber-100 truncate text-lg uppercase tracking-tight">{event.name}</CardTitle>
                 <CardDescription className="text-stone-500 truncate text-xs">{event.description || "No description"}</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex gap-4 text-stone-400 text-[10px] uppercase tracking-widest border-b border-stone-800 pb-4">
-                  <span className="flex items-center gap-1.5"><Camera className="w-3 h-3 text-amber-600" /> {event.photo_count} Snaps</span>
-                  <span className="flex items-center gap-1.5"><Users className="w-3 h-3 text-amber-600" /> {event.guest_count} Guests</span>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <div className="flex gap-3">
-                    <Button variant="outline" size="sm" className="flex-1 bg-stone-800 border-stone-700 text-xs" onClick={() => { setSelectedEvent(event); setIsQrOpen(true); }}>
-                      <QrCode className="w-3 h-3 mr-2 text-amber-500" /> QR
-                    </Button>
-                    <Button variant="outline" size="sm" className="flex-1 border-blue-900/50 text-blue-400 text-xs" onClick={() => window.open(`/event/${event.id}`, '_blank')}>
-                      <ExternalLink className="w-3 h-3 mr-2" /> Gallery
-                    </Button>
-                  </div>
-                  <Button variant="ghost" size="sm" className="text-red-900 hover:text-red-500 text-[10px] uppercase" onClick={() => deleteEvent(event.id)}>
-                    <Trash2 className="w-3 h-3 mr-2" /> Destroy
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </main>
-
-      <Dialog open={isQrOpen} onOpenChange={setIsQrOpen}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-100 max-w-sm rounded-3xl">
-          <DialogHeader><DialogTitle className="text-amber-100 text-center uppercase tracking-widest text-sm">Guest Key</DialogTitle></DialogHeader>
-          {selectedEvent && (
-            <div className="flex flex-col items-center py-4">
-              <div className="bg-white p-4 rounded-2xl mb-6 shadow-xl">
-                <QRCodeSVG value={getEventUrl(selectedEvent.id)} size={220} level="H" includeMargin={false} imageSettings={{ src: "/camera-icon.png", height: 40, width: 40, excavate: true }} />
-              </div>
-              <div className="flex gap-2 bg-stone-950 p-2 rounded-lg border border-stone-800 w-full">
-                <code className="text-[9px] text-stone-400 flex-1 truncate self-center">{getEventUrl(selectedEvent.id)}</code>
-                <Button variant="ghost" size="sm" className="h-8 w-8" onClick={() => copyToClipboard(getEventUrl(selectedEvent.id))}>
-                  {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-amber-600" />}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-white rounded-3xl">
-          <DialogHeader><DialogTitle className="text-amber-100 uppercase text-sm tracking-widest">Launch Event</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-6">
-             <Input placeholder="EVENT TITLE" value={newEvent.name} onChange={(e) => setNewEvent({...newEvent, name: e.target.value.toUpperCase()})} className="bg-stone-800 border-stone-700 uppercase" />
-             <Input type="date" value={newEvent.date} onChange={(e) => setNewEvent({...newEvent, date: e.target.value})} className="bg-stone-800 border-stone-700" />
-          </div>
-          <DialogFooter><Button onClick={handleCreateEvent} className="bg-amber-600 text-stone-900 font-bold w-full rounded-xl">ACTIVATE</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
+              <CardContent className="space
