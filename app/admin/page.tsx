@@ -159,8 +159,9 @@ export default function AdminDashboard() {
   }
 
   const getEventUrl = (eventId: string) => {
-    if (typeof window === "undefined") return ""
-    return `${window.location.origin}/snap/${eventId}`
+    // We hardcode your main domain here so the QR code is always 'clean' 
+    // and points to the production site, not the private preview links.
+    return `https://project-04vwo.vercel.app/snap/${eventId}`
   }
 
   const copyEventUrl = () => {
@@ -347,37 +348,53 @@ export default function AdminDashboard() {
                   </div>
                   
                   {/* Actions */}
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => showQrCode(event)}
-                      className="flex-1 border-amber-600/50 text-amber-400 hover:bg-amber-600/10"
-                    >
-                      <QrCode className="w-4 h-4 mr-1.5" />
-                      QR Code
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => toggleEventActive(event)}
-                      className="border-stone-600 text-stone-400 hover:bg-stone-800"
-                    >
-                      {event.is_active ? "Deactivate" : "Activate"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => deleteEvent(event.id)}
-                      className="border-red-900/50 text-red-400 hover:bg-red-900/20"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+<div className="flex flex-col gap-2 pt-2">
+  <div className="flex gap-2">
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => showQrCode(event)}
+      className="flex-1 border-amber-600/50 text-amber-400 hover:bg-amber-600/10"
+    >
+      <QrCode className="w-4 h-4 mr-1.5" />
+      QR Code
+    </Button>
+    
+    {/* NEW VIEW GALLERY BUTTON */}
+    <a 
+      href={`/event/${event.id}`} 
+      className="flex-1"
+    >
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-full border-blue-600/50 text-blue-400 hover:bg-blue-600/10"
+      >
+        <ExternalLink className="w-4 h-4 mr-1.5" />
+        Photos
+      </Button>
+    </a>
+  </div>
+
+  <div className="flex gap-2">
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => toggleEventActive(event)}
+      className="flex-1 border-stone-600 text-stone-400 hover:bg-stone-800"
+    >
+      {event.is_active ? "Deactivate" : "Activate"}
+    </Button>
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => deleteEvent(event.id)}
+      className="border-red-900/50 text-red-400 hover:bg-red-900/20"
+    >
+      <Trash2 className="w-4 h-4" />
+    </Button>
+  </div>
+</div>
         )}
       </main>
 
