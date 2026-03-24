@@ -31,30 +31,48 @@ export default function SnapPage() {
 
   useEffect(() => {
     async function loadEvent() {
-      const eventId = params?.eventId as string
-      if (!eventId || eventId === "unidentified") return
+      const eventId = params?.eventId as string;
+      if (!eventId || eventId === "unidentified") return;
 
-      // Fetch event settings
-      const { data: event } = await supabase.from("events").select("*").eq("id", eventId).maybeSingle()
+      // 1. Fetch event settings (Force no-cache)
+      const { data: event, error: eventErr } = await supabase
+        .from("events")
+        .select("*")
+        .eq("id", eventId)
+        .single();
       
+      if (eventErr) {
+        console.error("Event Load Error:", eventErr);
+        return;
+      }
+
       if (event) {
-        setEventData(event)
-        const guestId = getGuestId()
+        setEventData(event);
+        const guestId = getGuestId();
         
-        // Fetch specific photo count for THIS guest only
-        const { count: guestPhotoCount } = await supabase
+        // 2. Get Count for THIS specific guest
+        const { count: guestPhotoCount, error: countErr } = await supabase
           .from("photos")
           .select("id", { count: "exact" })
           .eq("event_id", eventId)
-          .eq("guest_id", guestId)
+          .eq("guest_id", guestId);
 
-        const limit = event.photo_limit || 25
-        const used = guestPhotoCount || 0
-        setRemainingPhotos(limit - used)
+        if (countErr) console.error("Count Error:", countErr);
+
+        const limit = event.photo_limit || 25;
+        const used = guestPhotoCount || 0;
+        
+        // Update the state
+        setRemainingPhotos(limit - used);
       }
     }
-    loadEvent()
-  }, [params])
+
+    loadEvent();
+    
+    // Refresh count when user comes back to the tab
+    window.addEventListener('focus', loadEvent);
+    return () => window.removeEventListener('focus', loadEvent);
+  }, [params]);
 
   // Properly stops all camera tracks to prevent hardware "locking"
   const stopCamera = () => {
