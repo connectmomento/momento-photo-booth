@@ -188,3 +188,19 @@ export default function SnapPage() {
     </div>
   )
 }
+{remainingPhotos !== null && remainingPhotos <= 0 && (
+  <div className="absolute inset-0 bg-stone-950 z-50 flex flex-col items-center justify-center p-10 text-center">
+    <ImageIcon className="w-16 h-16 text-amber-600 mb-6 opacity-20" />
+    <h2 className="text-xl font-bold text-amber-100 uppercase tracking-tighter">Limit Reached</h2>
+    <p className="text-stone-500 text-xs mt-4 uppercase tracking-widest leading-relaxed">
+      You've captured all your allowed memories for this event. 
+      Visit the gallery to view and download them!
+    </p>
+    <button 
+      onClick={() => window.open(`/event/${params?.eventId}`, '_blank')}
+      className="mt-10 border border-amber-600/30 text-amber-600 px-8 py-3 rounded-full text-[10px] tracking-widest uppercase"
+    >
+      View Gallery
+    </button>
+  </div>
+)}
