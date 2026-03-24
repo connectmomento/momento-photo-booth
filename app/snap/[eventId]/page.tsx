@@ -1,123 +1,157 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { RefreshCw, Download, Camera, CheckCircle } from "lucide-react"
+import { RefreshCw, CheckCircle, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 
 export default function SnapPage({ params }: { params: { eventId: string } }) {
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment")
-  const [isStreaming, setIsStreaming] = useState(false)
   const [isCapturing, setIsCapturing] = useState(false)
-  const [lastPhotoUrl, setLastPhotoUrl] = useState<string | null>(null)
   const [showDownload, setShowDownload] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [remainingPhotos, setRemainingPhotos] = useState<number>(0)
+  
+  // Initialize with a fallback so it doesn't show 0 immediately
+  const [remainingPhotos, setRemainingPhotos] = useState<number | null>(null)
   const [eventData, setEventData] = useState<any>(null)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  // 1. Unique Guest ID per event (Stored in Phone Browser)
   const getGuestId = () => {
     let id = localStorage.getItem(`guest_${params.eventId}`)
     if (!id) {
-      id = `guest_${Math.random().toString(36).substring(7)}`
+      id = `g_${Math.random().toString(36).substring(7)}`
       localStorage.setItem(`guest_${params.eventId}`, id)
     }
     return id
   }
 
-  // 2. Load Event Info & Calculate Remaining Photos
+  // 1. Improved Data Loading
   useEffect(() => {
     async function loadEvent() {
-      const { data: event } = await supabase.from("events").select("*").eq("id", params.eventId).single()
-      if (event) {
+      try {
+        const { data: event, error: eventErr } = await supabase
+          .from("events")
+          .select("*")
+          .eq("id", params.eventId)
+          .single()
+
+        if (eventErr || !event) {
+          setError("Event not found")
+          return
+        }
+
         setEventData(event)
-        const { count } = await supabase.from("photos")
+
+        const { count, error: countErr } = await supabase
+          .from("photos")
           .select("id", { count: "exact" })
           .eq("event_id", params.eventId)
-        setRemainingPhotos(event.photo_limit - (count || 0))
+
+        const limit = event.photo_limit || 25
+        setRemainingPhotos(limit - (count || 0))
+      } catch (err) {
+        console.error(err)
+        setRemainingPhotos(25) // Fallback
       }
     }
     loadEvent()
   }, [params.eventId])
 
-  const switchCamera = async () => {
-    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop())
-    setIsStreaming(false)
-    await new Promise(r => setTimeout(r, 150))
-    setFacingMode(prev => prev === "user" ? "environment" : "user")
+  // 2. Fixed Camera Switching (Cleans up old streams properly)
+  const stopGui = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+  }
+
+  const startCamera = async () => {
+    stopGui()
+    try {
+      const constraints = {
+        video: { 
+          facingMode: facingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+      }
+    } catch (err) {
+      setError("Camera access denied. Please check site permissions.")
+    }
   }
 
   useEffect(() => {
-    async function startCamera() {
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode } })
-        streamRef.current = s
-        if (videoRef.current) videoRef.current.srcObject = s
-        setIsStreaming(true)
-      } catch { setError("Please allow camera access in your browser settings.") }
-    }
     startCamera()
-    return () => streamRef.current?.getTracks().forEach(t => t.stop())
+    return () => stopGui()
   }, [facingMode])
 
-  // 3. The "Filing Cabinet" Capture Logic
+  const switchCamera = () => {
+    setFacingMode(prev => prev === "user" ? "environment" : "user")
+  }
+
   const capturePhoto = async () => {
-    if (!videoRef.current || !canvasRef.current || isCapturing || remainingPhotos <= 0) return
+    if (!videoRef.current || !canvasRef.current || isCapturing || (remainingPhotos !== null && remainingPhotos <= 0)) return
 
     setIsCapturing(true)
     const canvas = canvasRef.current
-    canvas.width = videoRef.current.videoWidth
-    canvas.height = videoRef.current.videoHeight
+    const video = videoRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    
     const ctx = canvas.getContext("2d")
     if (!ctx) return
+    ctx.drawImage(video, 0, 0)
     
-    ctx.drawImage(videoRef.current, 0, 0)
     const imageData = canvas.toDataURL("image/jpeg", 0.8)
 
-    // --- STEP A: SAVE TO PHONE STORAGE ---
+    // Save locally
     const link = document.createElement("a")
     link.href = imageData
-    link.download = `momento-${Date.now()}.jpg`
-    link.click() 
+    link.download = `snap-${Date.now()}.jpg`
+    link.click()
 
-    // --- STEP B: UPLOAD TO SUPABASE FOLDER ---
     canvas.toBlob(async (blob) => {
       if (!blob) return
       const guestId = getGuestId()
-      const fileName = `${Date.now()}.jpg`
-      // PATH: EventID / GuestID / FileName
-      const filePath = `${params.eventId}/${guestId}/${fileName}`
+      const filePath = `${params.eventId}/${guestId}/${Date.now()}.jpg`
 
       const { error: upErr } = await supabase.storage.from("photos").upload(filePath, blob)
-      
       if (!upErr) {
         const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(filePath)
         await supabase.from("photos").insert([{ 
           event_id: params.eventId, 
           url: publicUrl, 
-          guest_id: guestId,
-          storage_path: filePath 
+          guest_id: guestId 
         }])
-        setLastPhotoUrl(publicUrl)
-        setRemainingPhotos(prev => prev - 1)
+        setRemainingPhotos(prev => (prev !== null ? prev - 1 : null))
         setShowDownload(true)
       }
       setIsCapturing(false)
     }, "image/jpeg")
   }
 
-  if (error) return <div className="p-20 text-white text-center font-mono">{error}</div>
+  if (error) return (
+    <div className="min-h-screen bg-stone-900 flex flex-col items-center justify-center p-10 text-center font-mono">
+      <AlertCircle className="text-red-500 w-12 h-12 mb-4" />
+      <p className="text-white">{error}</p>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-stone-900 flex flex-col items-center p-4 font-mono text-amber-100">
-      <div className="w-full max-w-md flex justify-between mb-4 px-2 text-[10px] uppercase tracking-widest opacity-70">
+      <div className="w-full max-w-md flex justify-between mb-4 px-2 text-[10px] tracking-widest uppercase opacity-70">
         <span>{eventData?.name || "Initializing..."}</span>
-        <span className={remainingPhotos < 5 ? "text-red-500 animate-pulse font-bold" : ""}>
-          {remainingPhotos} EXPOSURES LEFT
-        </span>
+        <span>{remainingPhotos ?? "--"} EXPOSURES LEFT</span>
       </div>
 
       <div className="relative w-full max-w-md aspect-[3/4] bg-black rounded-3xl overflow-hidden border-8 border-stone-800 shadow-2xl">
@@ -126,29 +160,22 @@ export default function SnapPage({ params }: { params: { eventId: string } }) {
         {showDownload && (
           <div className="absolute inset-0 bg-stone-900/95 z-30 flex flex-col items-center justify-center p-6 text-center">
             <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
-            <h2 className="text-xl mb-2 tracking-tighter">SAVED TO GALLERY</h2>
-            <p className="text-[10px] text-stone-500 mb-8 uppercase">A copy has been sent to the event vault</p>
-            <button onClick={() => setShowDownload(false)} className="bg-amber-600 text-black px-12 py-4 rounded-full font-bold text-sm active:scale-95 transition-all">
-              NEXT PHOTO
-            </button>
+            <h2 className="text-xl mb-6">SAVED TO GALLERY</h2>
+            <button onClick={() => setShowDownload(false)} className="bg-amber-600 text-black px-12 py-4 rounded-full font-bold">NEXT SNAP</button>
           </div>
         )}
 
-        <button onClick={switchCamera} className="absolute top-4 right-4 z-20 bg-black/40 p-3 rounded-full border border-white/10 backdrop-blur-md">
+        <button onClick={switchCamera} className="absolute top-4 right-4 z-20 bg-black/40 p-3 rounded-full border border-white/10">
           <RefreshCw className="w-5 h-5" />
         </button>
       </div>
 
       <button 
         onClick={capturePhoto}
-        disabled={isCapturing || remainingPhotos <= 0}
-        className={`mt-10 w-24 h-24 rounded-full border-[10px] border-stone-700 transition-all ${isCapturing ? 'bg-red-500' : 'bg-white active:scale-90 shadow-[0_0_20px_rgba(255,255,255,0.3)]'}`}
+        disabled={isCapturing || (remainingPhotos !== null && remainingPhotos <= 0)}
+        className={`mt-10 w-24 h-24 rounded-full border-[10px] border-stone-700 ${isCapturing ? 'bg-red-500' : 'bg-white active:scale-90'}`}
       />
-      
       <canvas ref={canvasRef} className="hidden" />
-      <p className="mt-6 text-stone-600 text-[10px] uppercase tracking-[0.2em]">
-        {isCapturing ? "Developing..." : "Tap to Snap"}
-      </p>
     </div>
   )
 }
