@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { RefreshCw, CheckCircle, AlertCircle } from "lucide-react"
+import { RefreshCw, CheckCircle, Camera } from "lucide-react"
 import { supabase } from "@/lib/supabase"
-import { useParams } from "next/navigation" // Add this import
+import { useParams } from "next/navigation"
 
 export default function SnapPage() {
-  const params = useParams() // Use the Next.js hook instead of props
+  const params = useParams()
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment")
   const [isCapturing, setIsCapturing] = useState(false)
   const [showDownload, setShowDownload] = useState(false)
@@ -18,51 +18,32 @@ export default function SnapPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
+  const getGuestId = () => {
+    if (typeof window === "undefined") return "anon"
+    let id = localStorage.getItem(`guest_${params?.eventId}`)
+    if (!id) {
+      id = `g_${Math.random().toString(36).substring(7)}`
+      localStorage.setItem(`guest_${params?.eventId}`, id)
+    }
+    return id
+  }
+
   useEffect(() => {
     async function loadEvent() {
-      // SMART ID DETECTION: Try params first, then the URL string
-      let eventId = params?.eventId as string;
-      
-      if (!eventId || eventId === "unidentified") {
-        const pathParts = window.location.pathname.split('/');
-        eventId = pathParts[pathParts.length - 1];
+      const eventId = params?.eventId as string
+      if (!eventId || eventId === "unidentified") return
+
+      const { data: event } = await supabase.from("events").select("*").eq("id", eventId).maybeSingle()
+      if (event) {
+        setEventData(event)
+        const { count } = await supabase.from("photos").select("id", { count: "exact" }).eq("event_id", eventId)
+        setRemainingPhotos((event.photo_limit || 25) - (count || 0))
       }
-
-      if (!eventId || eventId === "unidentified" || eventId.length < 20) {
-        setError(`Link Error: ID (${eventId}) is invalid. Please rescan the QR.`);
-        return;
-      }
-
-      const { data: event, error: eventErr } = await supabase
-        .from("events")
-        .select("*")
-        .eq("id", eventId)
-        .maybeSingle();
-
-      if (eventErr) {
-        setError(`Connection Error: ${eventErr.message}`);
-        return;
-      }
-
-      if (!event) {
-        setError(`Event Not Found: ${eventId.substring(0,8)}`);
-        return;
-      }
-
-      setEventData(event);
-      
-      const { count } = await supabase
-        .from("photos")
-        .select("id", { count: "exact" })
-        .eq("event_id", eventId);
-
-      setRemainingPhotos((event.photo_limit || 25) - (count || 0));
     }
-    loadEvent();
-  }, [params]);
+    loadEvent()
+  }, [params])
 
-  // ... rest of your camera/capture code stays the same
-
+  // CRITICAL: Stop old camera before starting new one
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
@@ -75,12 +56,16 @@ export default function SnapPage() {
       stopCamera()
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: facingMode } 
+          video: { 
+            facingMode: facingMode,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          } 
         })
         streamRef.current = stream
         if (videoRef.current) videoRef.current.srcObject = stream
       } catch (err) {
-        setError("Camera access denied.")
+        setError("Camera Access Error. Please check browser permissions.")
       }
     }
     startCamera()
@@ -92,33 +77,56 @@ export default function SnapPage() {
 
     setIsCapturing(true)
     const canvas = canvasRef.current
-    canvas.width = videoRef.current.videoWidth
-    canvas.height = videoRef.current.videoHeight
+    const video = videoRef.current
+    
+    // Set canvas to actual video size
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     
-    ctx.drawImage(videoRef.current, 0, 0)
+    ctx.drawImage(video, 0, 0)
     const imageData = canvas.toDataURL("image/jpeg", 0.8)
 
-    // Download to phone
+    // 1. Save to Phone
     const link = document.createElement("a")
     link.href = imageData
-    link.download = `snap-${Date.now()}.jpg`
+    link.download = `momento-${Date.now()}.jpg`
     link.click()
 
+    // 2. Upload to Supabase
     canvas.toBlob(async (blob) => {
-      if (!blob) return
-      const guestId = getGuestId()
-      const filePath = `${params.eventId}/${guestId}/${Date.now()}.jpg`
+      if (!blob) {
+        setIsCapturing(false)
+        return
+      }
 
-      const { error: upErr } = await supabase.storage.from("photos").upload(filePath, blob)
-      if (!upErr) {
-        const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(filePath)
-        await supabase.from("photos").insert([{ 
-          event_id: params.eventId, 
-          url: publicUrl, 
-          guest_id: guestId 
-        }])
+      const eventId = params?.eventId as string
+      const guestId = getGuestId()
+      const filePath = `${eventId}/${guestId}/${Date.now()}.jpg`
+
+      // Ensure 'photos' bucket exists in Supabase Storage and is PUBLIC
+      const { data, error: upErr } = await supabase.storage.from("photos").upload(filePath, blob, {
+        contentType: 'image/jpeg',
+        upsert: true
+      })
+
+      if (upErr) {
+        console.error("Upload Failed:", upErr)
+        alert("Upload failed. Check if 'photos' bucket is Public in Supabase!")
+        setIsCapturing(false)
+        return
+      }
+
+      const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(filePath)
+      
+      const { error: dbErr } = await supabase.from("photos").insert([{ 
+        event_id: eventId, 
+        url: publicUrl, 
+        guest_id: guestId 
+      }])
+
+      if (!dbErr) {
         setRemainingPhotos(prev => (prev !== null ? prev - 1 : null))
         setShowDownload(true)
       }
@@ -126,20 +134,15 @@ export default function SnapPage() {
     }, "image/jpeg")
   }
 
-  if (error) return (
-    <div className="min-h-screen bg-stone-950 flex flex-col items-center justify-center p-10 text-center font-mono">
-      <AlertCircle className="text-amber-600 w-12 h-12 mb-4" />
-      <h2 className="text-amber-100 text-sm mb-2 uppercase tracking-widest font-bold">System Error</h2>
-      <p className="text-stone-500 text-xs">{error}</p>
-      <button onClick={() => window.location.reload()} className="mt-6 text-amber-600 underline text-[10px]">RETRY CONNECTION</button>
-    </div>
-  )
+  if (error) return <div className="min-h-screen bg-stone-950 flex items-center justify-center p-10 text-amber-600 text-center font-mono">{error}</div>
 
   return (
     <div className="min-h-screen bg-stone-950 flex flex-col items-center p-4 font-mono text-amber-100">
       <div className="w-full max-w-md flex justify-between mb-4 px-2 text-[10px] tracking-widest uppercase opacity-60">
-        <span>{eventData?.name || "AUTHENTICATING..."}</span>
-        <span>{remainingPhotos ?? "--"} LEFT</span>
+        <span>{eventData?.name || "CONNECTING..."}</span>
+        <span className={remainingPhotos && remainingPhotos < 5 ? "text-red-500 animate-pulse" : ""}>
+          {remainingPhotos ?? "--"} LEFT
+        </span>
       </div>
 
       <div className="relative w-full max-w-md aspect-[3/4] bg-black rounded-3xl overflow-hidden border-4 border-stone-800 shadow-2xl">
@@ -148,22 +151,28 @@ export default function SnapPage() {
         {showDownload && (
           <div className="absolute inset-0 bg-stone-950/98 z-30 flex flex-col items-center justify-center p-6 text-center">
             <CheckCircle className="w-16 h-16 text-amber-600 mb-4" />
-            <h2 className="text-xl mb-6 uppercase tracking-tighter text-amber-100">Saved to Gallery</h2>
-            <button onClick={() => setShowDownload(false)} className="bg-amber-600 text-stone-950 px-12 py-4 rounded-full font-bold text-xs">NEXT SNAP</button>
+            <h2 className="text-xl mb-6 uppercase tracking-widest">Saved</h2>
+            <button onClick={() => setShowDownload(false)} className="bg-amber-600 text-stone-950 px-12 py-4 rounded-full font-bold text-xs">READY FOR NEXT</button>
           </div>
         )}
 
-        <button onClick={() => setFacingMode(f => f === "user" ? "environment" : "user")} className="absolute top-4 right-4 z-20 bg-black/40 p-3 rounded-full border border-white/10 backdrop-blur-md">
-          <RefreshCw className="w-5 h-5" />
+        <button 
+          onClick={() => setFacingMode(f => f === "user" ? "environment" : "user")} 
+          className="absolute top-4 right-4 z-20 bg-black/40 p-3 rounded-full border border-white/10"
+        >
+          <RefreshCw className="w-5 h-5 text-amber-100" />
         </button>
       </div>
 
       <button 
         onClick={capturePhoto}
         disabled={isCapturing || (remainingPhotos !== null && remainingPhotos <= 0)}
-        className={`mt-10 w-24 h-24 rounded-full border-[8px] border-stone-800 transition-all ${isCapturing ? 'bg-red-500' : 'bg-stone-100 active:scale-90 shadow-[0_0_20px_rgba(255,255,255,0.1)]'}`}
+        className={`mt-10 w-20 h-20 rounded-full border-[6px] border-stone-800 transition-all ${isCapturing ? 'bg-red-600 animate-pulse' : 'bg-stone-100 active:scale-90 shadow-xl'}`}
       />
       <canvas ref={canvasRef} className="hidden" />
+      <p className="mt-4 text-[9px] text-stone-600 uppercase tracking-widest">
+        {isCapturing ? "Processing Snap..." : "Tap to capture memory"}
+      </p>
     </div>
   )
 }
