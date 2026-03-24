@@ -9,8 +9,6 @@ export default function SnapPage({ params }: { params: { eventId: string } }) {
   const [isCapturing, setIsCapturing] = useState(false)
   const [showDownload, setShowDownload] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
-  // Initialize with a fallback so it doesn't show 0 immediately
   const [remainingPhotos, setRemainingPhotos] = useState<number | null>(null)
   const [eventData, setEventData] = useState<any>(null)
   
@@ -18,7 +16,9 @@ export default function SnapPage({ params }: { params: { eventId: string } }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
+  // 1. Better Guest ID Logic
   const getGuestId = () => {
+    if (typeof window === "undefined") return "server"
     let id = localStorage.getItem(`guest_${params.eventId}`)
     if (!id) {
       id = `g_${Math.random().toString(36).substring(7)}`
@@ -27,94 +27,77 @@ export default function SnapPage({ params }: { params: { eventId: string } }) {
     return id
   }
 
-  // 1. Improved Data Loading
+  // 2. Load Event with Debugging
   useEffect(() => {
     async function loadEvent() {
-      try {
-        const { data: event, error: eventErr } = await supabase
-          .from("events")
-          .select("*")
-          .eq("id", params.eventId)
-          .single()
+      console.log("Searching for Event ID:", params.eventId)
+      
+      const { data: event, error: eventErr } = await supabase
+        .from("events")
+        .select("*")
+        .eq("id", params.eventId)
+        .maybeSingle() // maybeSingle prevents crash if 0 rows
 
-        if (eventErr || !event) {
-          setError("Event not found")
-          return
-        }
-
-        setEventData(event)
-
-        const { count, error: countErr } = await supabase
-          .from("photos")
-          .select("id", { count: "exact" })
-          .eq("event_id", params.eventId)
-
-        const limit = event.photo_limit || 25
-        setRemainingPhotos(limit - (count || 0))
-      } catch (err) {
-        console.error(err)
-        setRemainingPhotos(25) // Fallback
+      if (eventErr) {
+        setError(`Database Error: ${eventErr.message}`)
+        return
       }
+
+      if (!event) {
+        setError(`Event Not Found. ID used: ${params.eventId.substring(0,8)}...`)
+        return
+      }
+
+      setEventData(event)
+
+      const { count } = await supabase
+        .from("photos")
+        .select("id", { count: "exact" })
+        .eq("event_id", params.eventId)
+
+      setRemainingPhotos((event.photo_limit || 25) - (count || 0))
     }
     loadEvent()
   }, [params.eventId])
 
-  // 2. Fixed Camera Switching (Cleans up old streams properly)
-  const stopGui = () => {
+  const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null
-    }
-  }
-
-  const startCamera = async () => {
-    stopGui()
-    try {
-      const constraints = {
-        video: { 
-          facingMode: facingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      }
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
-    } catch (err) {
-      setError("Camera access denied. Please check site permissions.")
-    }
   }
 
   useEffect(() => {
+    async function startCamera() {
+      stopCamera()
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: facingMode } 
+        })
+        streamRef.current = stream
+        if (videoRef.current) videoRef.current.srcObject = stream
+      } catch (err) {
+        setError("Camera access denied.")
+      }
+    }
     startCamera()
-    return () => stopGui()
+    return () => stopCamera()
   }, [facingMode])
-
-  const switchCamera = () => {
-    setFacingMode(prev => prev === "user" ? "environment" : "user")
-  }
 
   const capturePhoto = async () => {
     if (!videoRef.current || !canvasRef.current || isCapturing || (remainingPhotos !== null && remainingPhotos <= 0)) return
 
     setIsCapturing(true)
     const canvas = canvasRef.current
-    const video = videoRef.current
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    
+    canvas.width = videoRef.current.videoWidth
+    canvas.height = videoRef.current.videoHeight
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    ctx.drawImage(video, 0, 0)
     
+    ctx.drawImage(videoRef.current, 0, 0)
     const imageData = canvas.toDataURL("image/jpeg", 0.8)
 
-    // Save locally
+    // Download to phone
     const link = document.createElement("a")
     link.href = imageData
     link.download = `snap-${Date.now()}.jpg`
@@ -141,31 +124,33 @@ export default function SnapPage({ params }: { params: { eventId: string } }) {
   }
 
   if (error) return (
-    <div className="min-h-screen bg-stone-900 flex flex-col items-center justify-center p-10 text-center font-mono">
-      <AlertCircle className="text-red-500 w-12 h-12 mb-4" />
-      <p className="text-white">{error}</p>
+    <div className="min-h-screen bg-stone-950 flex flex-col items-center justify-center p-10 text-center font-mono">
+      <AlertCircle className="text-amber-600 w-12 h-12 mb-4" />
+      <h2 className="text-amber-100 text-sm mb-2 uppercase tracking-widest font-bold">System Error</h2>
+      <p className="text-stone-500 text-xs">{error}</p>
+      <button onClick={() => window.location.reload()} className="mt-6 text-amber-600 underline text-[10px]">RETRY CONNECTION</button>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-stone-900 flex flex-col items-center p-4 font-mono text-amber-100">
-      <div className="w-full max-w-md flex justify-between mb-4 px-2 text-[10px] tracking-widest uppercase opacity-70">
-        <span>{eventData?.name || "Initializing..."}</span>
-        <span>{remainingPhotos ?? "--"} EXPOSURES LEFT</span>
+    <div className="min-h-screen bg-stone-950 flex flex-col items-center p-4 font-mono text-amber-100">
+      <div className="w-full max-w-md flex justify-between mb-4 px-2 text-[10px] tracking-widest uppercase opacity-60">
+        <span>{eventData?.name || "AUTHENTICATING..."}</span>
+        <span>{remainingPhotos ?? "--"} LEFT</span>
       </div>
 
-      <div className="relative w-full max-w-md aspect-[3/4] bg-black rounded-3xl overflow-hidden border-8 border-stone-800 shadow-2xl">
+      <div className="relative w-full max-w-md aspect-[3/4] bg-black rounded-3xl overflow-hidden border-4 border-stone-800 shadow-2xl">
         <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
         
         {showDownload && (
-          <div className="absolute inset-0 bg-stone-900/95 z-30 flex flex-col items-center justify-center p-6 text-center">
-            <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
-            <h2 className="text-xl mb-6">SAVED TO GALLERY</h2>
-            <button onClick={() => setShowDownload(false)} className="bg-amber-600 text-black px-12 py-4 rounded-full font-bold">NEXT SNAP</button>
+          <div className="absolute inset-0 bg-stone-950/98 z-30 flex flex-col items-center justify-center p-6 text-center">
+            <CheckCircle className="w-16 h-16 text-amber-600 mb-4" />
+            <h2 className="text-xl mb-6 uppercase tracking-tighter text-amber-100">Saved to Gallery</h2>
+            <button onClick={() => setShowDownload(false)} className="bg-amber-600 text-stone-950 px-12 py-4 rounded-full font-bold text-xs">NEXT SNAP</button>
           </div>
         )}
 
-        <button onClick={switchCamera} className="absolute top-4 right-4 z-20 bg-black/40 p-3 rounded-full border border-white/10">
+        <button onClick={() => setFacingMode(f => f === "user" ? "environment" : "user")} className="absolute top-4 right-4 z-20 bg-black/40 p-3 rounded-full border border-white/10 backdrop-blur-md">
           <RefreshCw className="w-5 h-5" />
         </button>
       </div>
@@ -173,7 +158,7 @@ export default function SnapPage({ params }: { params: { eventId: string } }) {
       <button 
         onClick={capturePhoto}
         disabled={isCapturing || (remainingPhotos !== null && remainingPhotos <= 0)}
-        className={`mt-10 w-24 h-24 rounded-full border-[10px] border-stone-700 ${isCapturing ? 'bg-red-500' : 'bg-white active:scale-90'}`}
+        className={`mt-10 w-24 h-24 rounded-full border-[8px] border-stone-800 transition-all ${isCapturing ? 'bg-red-500' : 'bg-stone-100 active:scale-90 shadow-[0_0_20px_rgba(255,255,255,0.1)]'}`}
       />
       <canvas ref={canvasRef} className="hidden" />
     </div>
