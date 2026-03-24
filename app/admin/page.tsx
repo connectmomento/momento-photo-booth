@@ -8,13 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Calendar, Camera, Users, Trash2, QrCode, Copy, Check, ExternalLink, Image as ImageIcon } from "lucide-react"
+import { Plus, Camera, Users, Trash2, QrCode, Copy, Check, ExternalLink, Image as ImageIcon } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 
 interface Event {
@@ -79,11 +77,12 @@ export default function AdminDashboard() {
       return `${window.location.origin}/snap/${eventId}`
     }
     return `/snap/${eventId}`
-    }
+  }
+
   const handleCreateEvent = async () => {
     if (!newEvent.name.trim()) return
     
-    const { data, error } = await supabase.from("events").insert([{
+    const { error } = await supabase.from("events").insert([{
       name: newEvent.name,
       description: newEvent.description || null,
       photo_limit: newEvent.photo_limit,
@@ -93,7 +92,7 @@ export default function AdminDashboard() {
 
     if (error) {
       console.error("Supabase Error:", error)
-      alert(`Error: ${error.message}. Ensure 'photo_limit' and 'event_date' columns exist!`)
+      alert(`Error: ${error.message}. Ensure 'photo_limit' and 'event_date' columns exist in Supabase!`)
       return
     }
 
@@ -103,7 +102,7 @@ export default function AdminDashboard() {
   }
 
   const deleteEvent = async (eventId: string) => {
-    if (!confirm("Are you sure? All photos in the filing cabinet will be inaccessible.")) return
+    if (!confirm("Are you sure? This will delete all records for this event.")) return
     await supabase.from("events").delete().eq("id", eventId)
     fetchEvents()
   }
@@ -114,7 +113,7 @@ export default function AdminDashboard() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  if (isLoading) return <div className="min-h-screen bg-stone-950 flex items-center justify-center font-mono text-amber-100 italic">Developing Dashboard...</div>
+  if (isLoading) return <div className="min-h-screen bg-stone-950 flex items-center justify-center font-mono text-amber-100 italic">Initializing Dashboard...</div>
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 font-mono">
@@ -177,12 +176,11 @@ export default function AdminDashboard() {
           {selectedEvent && (
             <div className="flex flex-col items-center py-6">
               <div className="bg-white p-4 rounded-2xl mb-6 shadow-2xl">
-                <<QRCodeSVG 
-  value={getEventUrl(selectedEvent.id)} 
-  size={220} 
-  level="M" // Changed from H to M for better compatibility
-  includeMargin={false}
-  // Removed imageSettings to make the QR code solid and easier to scan
+                <QRCodeSVG 
+                  value={getEventUrl(selectedEvent.id)} 
+                  size={220} 
+                  level="M" 
+                  includeMargin={false}
                 />
               </div>
               <div className="flex gap-2 bg-black/50 p-3 rounded-xl border border-stone-800 w-full">
@@ -203,7 +201,7 @@ export default function AdminDashboard() {
           <div className="space-y-6 py-4">
             <div className="space-y-1.5">
               <p className="text-[10px] text-stone-500 uppercase ml-1">Title</p>
-              <Input placeholder="E.G. PAVAN WEDDING" value={newEvent.name} onChange={(e) => setNewEvent({...newEvent, name: e.target.value.toUpperCase()})} className="bg-stone-800 border-stone-700 rounded-xl py-6 focus:ring-amber-600 uppercase" />
+              <Input placeholder="E.G. WEDDING" value={newEvent.name} onChange={(e) => setNewEvent({...newEvent, name: e.target.value.toUpperCase()})} className="bg-stone-800 border-stone-700 rounded-xl py-6 focus:ring-amber-600 uppercase" />
             </div>
             <div className="flex gap-4">
               <div className="flex-1 space-y-1.5">
