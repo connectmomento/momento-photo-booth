@@ -133,14 +133,24 @@ export default function SnapPage() {
     }
   }, [isOutOfFilm, isLoading, event, facingMode, startCamera])
 
-  const switchCamera = async () => {
-    // Stop all tracks from the current stream
+ const switchCamera = async () => {
+    // 1. Stop all current camera tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop())
       streamRef.current = null
     }
-    setIsStreaming(false)
     
+    setIsStreaming(false)
+
+    // 2. A tiny 150ms pause to let the phone hardware reset
+    await new Promise((resolve) => setTimeout(resolve, 150))
+
+    // 3. FLIP: Switch between 'user' (front) and 'environment' (back)
+    setFacingMode((prev) => (prev === "user" ? "environment" : "user"))
+    
+    // 4. RESTART: The camera will automatically restart because facingMode changed
+  }
+        
     const newMode = facingMode === "user" ? "environment" : "user"
     setFacingMode(newMode)
     
