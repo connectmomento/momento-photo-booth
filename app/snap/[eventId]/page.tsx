@@ -38,6 +38,18 @@ export default function SnapPage() {
         setEventData(event)
         const { count } = await supabase.from("photos").select("id", { count: "exact" }).eq("event_id", eventId)
         setRemainingPhotos((event.photo_limit || 25) - (count || 0))
+        // 2. Get THIS SPECIFIC GUEST'S photo count
+        const guestId = getGuestId() // This gets the ID saved in this phone's memory
+        
+        const { count } = await supabase
+          .from("photos")
+          .select("id", { count: "exact" })
+          .eq("event_id", eventId)
+          .eq("guest_id", guestId) // <--- THIS IS THE KEY CHANGE
+        // 3. Calculate remaining based on the Admin's limit
+        const limit = event.photo_limit || 25
+        const used = count || 0
+        setRemainingPhotos(limit - used)
       }
     }
     loadEvent()
