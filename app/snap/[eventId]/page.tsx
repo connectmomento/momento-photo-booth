@@ -30,35 +30,40 @@ export default function SnapPage({ params }: { params: { eventId: string } }) {
   // 2. Load Event with Debugging
   useEffect(() => {
     async function loadEvent() {
-      console.log("Searching for Event ID:", params.eventId)
-      
+      // 1. Safety Check: If eventId is "unidentified" or too short, stop immediately
+      if (!params.eventId || params.eventId === "unidentified" || params.eventId.length < 10) {
+        console.error("Invalid Event ID detected:", params.eventId);
+        setError("Invalid Link: Please rescan the QR code from the Admin Dashboard.");
+        return;
+      }
+
       const { data: event, error: eventErr } = await supabase
         .from("events")
         .select("*")
         .eq("id", params.eventId)
-        .maybeSingle() // maybeSingle prevents crash if 0 rows
+        .maybeSingle();
 
       if (eventErr) {
-        setError(`Database Error: ${eventErr.message}`)
-        return
+        setError(`Database Error: ${eventErr.message}`);
+        return;
       }
 
       if (!event) {
-        setError(`Event Not Found. ID used: ${params.eventId.substring(0,8)}...`)
-        return
+        setError("Event Not Found. Please check the Admin Dashboard.");
+        return;
       }
 
-      setEventData(event)
+      setEventData(event);
 
       const { count } = await supabase
         .from("photos")
         .select("id", { count: "exact" })
-        .eq("event_id", params.eventId)
+        .eq("event_id", params.eventId);
 
-      setRemainingPhotos((event.photo_limit || 25) - (count || 0))
+      setRemainingPhotos((event.photo_limit || 25) - (count || 0));
     }
-    loadEvent()
-  }, [params.eventId])
+    loadEvent();
+  }, [params.eventId]);
 
   const stopCamera = () => {
     if (streamRef.current) {
