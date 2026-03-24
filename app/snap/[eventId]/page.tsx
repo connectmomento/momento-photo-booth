@@ -28,37 +28,41 @@ export default function SnapPage({ params }: { params: { eventId: string } }) {
   }
 
   // 2. Load Event with Debugging
-  useEffect(() => {
+ useEffect(() => {
     async function loadEvent() {
-      // 1. Safety Check: If eventId is "unidentified" or too short, stop immediately
-      if (!params.eventId || params.eventId === "unidentified" || params.eventId.length < 10) {
-        console.error("Invalid Event ID detected:", params.eventId);
-        setError("Invalid Link: Please rescan the QR code from the Admin Dashboard.");
+      // 1. Clean the ID (Remove any accidental spaces or "unidentified" strings)
+      const cleanId = params.eventId?.trim();
+      
+      if (!cleanId || cleanId === "unidentified" || cleanId.length < 20) {
+        setError(`Link Error: The ID received (${cleanId}) is not a valid event key.`);
         return;
       }
+
+      console.log("Fetching Event:", cleanId);
 
       const { data: event, error: eventErr } = await supabase
         .from("events")
         .select("*")
-        .eq("id", params.eventId)
+        .eq("id", cleanId)
         .maybeSingle();
 
       if (eventErr) {
-        setError(`Database Error: ${eventErr.message}`);
+        setError(`Database Connection Error: ${eventErr.message}`);
         return;
       }
 
       if (!event) {
-        setError("Event Not Found. Please check the Admin Dashboard.");
+        setError(`Event Not Found: The ID ${cleanId.substring(0,8)} does not exist in the database.`);
         return;
       }
 
       setEventData(event);
 
+      // 2. Fetch photo count
       const { count } = await supabase
         .from("photos")
         .select("id", { count: "exact" })
-        .eq("event_id", params.eventId);
+        .eq("event_id", cleanId);
 
       setRemainingPhotos((event.photo_limit || 25) - (count || 0));
     }
