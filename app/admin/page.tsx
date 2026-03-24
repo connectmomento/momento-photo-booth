@@ -74,7 +74,11 @@ export default function AdminDashboard() {
     fetchEvents()
   }, [fetchEvents])
 
-  const getEventUrl = (eventId: string) => `https://project-04vwo.vercel.app/snap/${eventId}`
+  const getEventUrl = (eventId: string) => {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/snap/${eventId}`
+    }
+    return `/snap/${eventId}`
 
   const handleCreateEvent = async () => {
     if (!newEvent.name.trim()) return
