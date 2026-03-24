@@ -25,7 +25,32 @@ interface Event {
   photo_count?: number
   guest_count?: number
 }
-
+{/* Create Event Modal - WITH PHOTO LIMIT */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-white rounded-3xl">
+          <DialogHeader><DialogTitle className="text-amber-100 uppercase text-sm tracking-widest">Launch New Event</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-6">
+             <div className="space-y-1">
+                <p className="text-[10px] text-stone-500 uppercase ml-1">Title</p>
+                <Input placeholder="e.g. PAVAN WEDDING" value={newEvent.name} onChange={(e) => setNewEvent({...newEvent, name: e.target.value.toUpperCase()})} className="bg-stone-800 border-stone-700 rounded-xl focus:ring-amber-600 uppercase" />
+             </div>
+             
+             <div className="flex gap-4">
+               <div className="flex-1 space-y-1">
+                  <p className="text-[10px] text-stone-500 uppercase ml-1">Event Date</p>
+                  <Input type="date" value={newEvent.date} onChange={(e) => setNewEvent({...newEvent, date: e.target.value})} className="bg-stone-800 border-stone-700 rounded-xl" />
+               </div>
+               <div className="w-24 space-y-1">
+                  <p className="text-[10px] text-stone-500 uppercase ml-1">Limit</p>
+                  <Input type="number" value={newEvent.photo_limit} onChange={(e) => setNewEvent({...newEvent, photo_limit: parseInt(e.target.value) || 25})} className="bg-stone-800 border-stone-700 rounded-xl" />
+               </div>
+             </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCreateEvent} className="bg-amber-600 text-stone-900 font-bold w-full rounded-xl py-6">ACTIVATE EVENT</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 export default function AdminDashboard() {
   const [events, setEvents] = useState<Event[]>([])
   const [isLoading, setIsLoading] = useState(true)
